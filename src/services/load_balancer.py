@@ -19,8 +19,8 @@ class LoadBalancer:
         Select a token using random load balancing
 
         Args:
-            for_image_generation: If True, only select tokens that are not locked for image generation
-            for_video_generation: If True, filter out tokens with Sora2 quota exhausted (sora2_cooldown_until not expired) and tokens that don't support Sora2
+            for_image_generation: If True, only select tokens that are not locked for image generation and have image_enabled=True
+            for_video_generation: If True, filter out tokens with Sora2 quota exhausted (sora2_cooldown_until not expired), tokens that don't support Sora2, and tokens with video_enabled=False
 
         Returns:
             Selected token or None if no available tokens
@@ -35,6 +35,10 @@ class LoadBalancer:
             from datetime import datetime
             available_tokens = []
             for token in active_tokens:
+                # Skip tokens that don't have video enabled
+                if not token.video_enabled:
+                    continue
+
                 # Skip tokens that don't support Sora2
                 if not token.sora2_supported:
                     continue
@@ -57,10 +61,14 @@ class LoadBalancer:
 
             active_tokens = available_tokens
 
-        # If for image generation, filter out locked tokens
+        # If for image generation, filter out locked tokens and tokens without image enabled
         if for_image_generation:
             available_tokens = []
             for token in active_tokens:
+                # Skip tokens that don't have image enabled
+                if not token.image_enabled:
+                    continue
+
                 if not await self.token_lock.is_locked(token.id):
                     available_tokens.append(token)
 

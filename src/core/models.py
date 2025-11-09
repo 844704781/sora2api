@@ -30,6 +30,9 @@ class Token(BaseModel):
     # Sora2 剩余次数
     sora2_remaining_count: int = 0  # Sora2剩余可用次数
     sora2_cooldown_until: Optional[datetime] = None  # Sora2冷却时间
+    # 功能开关
+    image_enabled: bool = True  # 是否启用图片生成
+    video_enabled: bool = True  # 是否启用视频生成
 
 class TokenStats(BaseModel):
     """Token statistics"""

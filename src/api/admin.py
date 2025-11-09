@@ -62,6 +62,8 @@ class AddTokenRequest(BaseModel):
     st: Optional[str] = None  # Session Token (optional, for storage)
     rt: Optional[str] = None  # Refresh Token (optional, for storage)
     remark: Optional[str] = None
+    image_enabled: bool = True  # Enable image generation
+    video_enabled: bool = True  # Enable video generation
 
 class ST2ATRequest(BaseModel):
     st: str  # Session Token
@@ -77,6 +79,8 @@ class UpdateTokenRequest(BaseModel):
     st: Optional[str] = None
     rt: Optional[str] = None
     remark: Optional[str] = None
+    image_enabled: Optional[bool] = None  # Enable image generation
+    video_enabled: Optional[bool] = None  # Enable video generation
 
 class UpdateAdminConfigRequest(BaseModel):
     error_ban_threshold: int
@@ -171,7 +175,10 @@ async def get_tokens(token: str = Depends(verify_admin_token)) -> List[dict]:
             "sora2_redeemed_count": token.sora2_redeemed_count,
             "sora2_total_count": token.sora2_total_count,
             "sora2_remaining_count": token.sora2_remaining_count,
-            "sora2_cooldown_until": token.sora2_cooldown_until.isoformat() if token.sora2_cooldown_until else None
+            "sora2_cooldown_until": token.sora2_cooldown_until.isoformat() if token.sora2_cooldown_until else None,
+            # 功能开关
+            "image_enabled": token.image_enabled,
+            "video_enabled": token.video_enabled
         })
 
     return result
@@ -185,7 +192,9 @@ async def add_token(request: AddTokenRequest, token: str = Depends(verify_admin_
             st=request.st,
             rt=request.rt,
             remark=request.remark,
-            update_if_exists=False
+            update_if_exists=False,
+            image_enabled=request.image_enabled,
+            video_enabled=request.video_enabled
         )
         return {"success": True, "message": "Token 添加成功", "token_id": new_token.id}
     except ValueError as e:
@@ -302,14 +311,16 @@ async def update_token(
     request: UpdateTokenRequest,
     token: str = Depends(verify_admin_token)
 ):
-    """Update token (AT, ST, RT, remark)"""
+    """Update token (AT, ST, RT, remark, image_enabled, video_enabled)"""
     try:
         await token_manager.update_token(
             token_id=token_id,
             token=request.token,
             st=request.st,
             rt=request.rt,
-            remark=request.remark
+            remark=request.remark,
+            image_enabled=request.image_enabled,
+            video_enabled=request.video_enabled
         )
         return {"success": True, "message": "Token updated"}
     except Exception as e:

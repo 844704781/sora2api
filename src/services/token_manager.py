@@ -494,7 +494,9 @@ class TokenManager:
                        st: Optional[str] = None,
                        rt: Optional[str] = None,
                        remark: Optional[str] = None,
-                       update_if_exists: bool = False) -> Token:
+                       update_if_exists: bool = False,
+                       image_enabled: bool = True,
+                       video_enabled: bool = True) -> Token:
         """Add a new Access Token to database
 
         Args:
@@ -503,6 +505,8 @@ class TokenManager:
             rt: Refresh Token (optional)
             remark: Remark (optional)
             update_if_exists: If True, update existing token instead of raising error
+            image_enabled: Enable image generation (default: True)
+            video_enabled: Enable video generation (default: True)
 
         Returns:
             Token object
@@ -634,7 +638,9 @@ class TokenManager:
             sora2_invite_code=sora2_invite_code,
             sora2_redeemed_count=sora2_redeemed_count,
             sora2_total_count=sora2_total_count,
-            sora2_remaining_count=sora2_remaining_count
+            sora2_remaining_count=sora2_remaining_count,
+            image_enabled=image_enabled,
+            video_enabled=video_enabled
         )
 
         # Save to database
@@ -704,8 +710,10 @@ class TokenManager:
                           token: Optional[str] = None,
                           st: Optional[str] = None,
                           rt: Optional[str] = None,
-                          remark: Optional[str] = None):
-        """Update token (AT, ST, RT, remark)"""
+                          remark: Optional[str] = None,
+                          image_enabled: Optional[bool] = None,
+                          video_enabled: Optional[bool] = None):
+        """Update token (AT, ST, RT, remark, image_enabled, video_enabled)"""
         # If token (AT) is updated, decode JWT to get new expiry time
         expiry_time = None
         if token:
@@ -715,7 +723,8 @@ class TokenManager:
             except Exception:
                 pass  # If JWT decode fails, keep expiry_time as None
 
-        await self.db.update_token(token_id, token=token, st=st, rt=rt, remark=remark, expiry_time=expiry_time)
+        await self.db.update_token(token_id, token=token, st=st, rt=rt, remark=remark, expiry_time=expiry_time,
+                                   image_enabled=image_enabled, video_enabled=video_enabled)
 
     async def get_active_tokens(self) -> List[Token]:
         """Get all active tokens (not cooled down)"""

@@ -100,6 +100,17 @@ class Database:
             except:
                 pass  # Column already exists
 
+            # Add image_enabled and video_enabled columns if they don't exist (migration)
+            try:
+                await db.execute("ALTER TABLE tokens ADD COLUMN image_enabled BOOLEAN DEFAULT 1")
+            except:
+                pass  # Column already exists
+
+            try:
+                await db.execute("ALTER TABLE tokens ADD COLUMN video_enabled BOOLEAN DEFAULT 1")
+            except:
+                pass  # Column already exists
+
             # Token stats table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS token_stats (
@@ -286,14 +297,16 @@ class Database:
             cursor = await db.execute("""
                 INSERT INTO tokens (token, email, username, name, st, rt, remark, expiry_time, is_active,
                                    plan_type, plan_title, subscription_end, sora2_supported, sora2_invite_code,
-                                   sora2_redeemed_count, sora2_total_count, sora2_remaining_count, sora2_cooldown_until)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   sora2_redeemed_count, sora2_total_count, sora2_remaining_count, sora2_cooldown_until,
+                                   image_enabled, video_enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (token.token, token.email, "", token.name, token.st, token.rt,
                   token.remark, token.expiry_time, token.is_active,
                   token.plan_type, token.plan_title, token.subscription_end,
                   token.sora2_supported, token.sora2_invite_code,
                   token.sora2_redeemed_count, token.sora2_total_count,
-                  token.sora2_remaining_count, token.sora2_cooldown_until))
+                  token.sora2_remaining_count, token.sora2_cooldown_until,
+                  token.image_enabled, token.video_enabled))
             await db.commit()
             token_id = cursor.lastrowid
 
@@ -415,8 +428,10 @@ class Database:
                           expiry_time: Optional[datetime] = None,
                           plan_type: Optional[str] = None,
                           plan_title: Optional[str] = None,
-                          subscription_end: Optional[datetime] = None):
-        """Update token (AT, ST, RT, remark, expiry_time, subscription info)"""
+                          subscription_end: Optional[datetime] = None,
+                          image_enabled: Optional[bool] = None,
+                          video_enabled: Optional[bool] = None):
+        """Update token (AT, ST, RT, remark, expiry_time, subscription info, image_enabled, video_enabled)"""
         async with aiosqlite.connect(self.db_path) as db:
             # Build dynamic update query
             updates = []
@@ -453,6 +468,14 @@ class Database:
             if subscription_end is not None:
                 updates.append("subscription_end = ?")
                 params.append(subscription_end)
+
+            if image_enabled is not None:
+                updates.append("image_enabled = ?")
+                params.append(image_enabled)
+
+            if video_enabled is not None:
+                updates.append("video_enabled = ?")
+                params.append(video_enabled)
 
             if updates:
                 params.append(token_id)
