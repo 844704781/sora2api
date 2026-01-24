@@ -46,6 +46,7 @@ watermark_free_enabled = false
 parse_method = "third_party"
 custom_parse_url = ""
 custom_parse_token = ""
+fallback_on_failure = true  # Auto fallback to watermarked video on failure
 
 [token_refresh]
 at_auto_refresh_enabled = false
