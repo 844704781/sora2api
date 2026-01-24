@@ -110,6 +110,7 @@ class WatermarkFreeConfig(BaseModel):
     parse_method: str  # Read from database, initialized from setting.toml on first startup
     custom_parse_url: Optional[str] = None  # Read from database, initialized from setting.toml on first startup
     custom_parse_token: Optional[str] = None  # Read from database, initialized from setting.toml on first startup
+    fallback_on_failure: bool = True  # Auto fallback to watermarked video on failure, default True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

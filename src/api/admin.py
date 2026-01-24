@@ -154,6 +154,7 @@ class UpdateWatermarkFreeConfigRequest(BaseModel):
     parse_method: Optional[str] = "third_party"  # "third_party" or "custom"
     custom_parse_url: Optional[str] = None
     custom_parse_token: Optional[str] = None
+    fallback_on_failure: Optional[bool] = True  # Auto fallback to watermarked video on failure
 
 class UpdateCallLogicConfigRequest(BaseModel):
     call_mode: Optional[str] = None  # "default" or "polling"
@@ -430,14 +431,16 @@ async def batch_enable_all(request: BatchDisableRequest = None, token: str = Dep
 
 @router.post("/api/tokens/batch/delete-disabled")
 async def batch_delete_disabled(request: BatchDisableRequest = None, token: str = Depends(verify_admin_token)):
-    """Delete selected tokens or all disabled tokens"""
+    """Delete selected disabled tokens or all disabled tokens"""
     try:
         if request and request.token_ids:
-            # Delete only selected tokens
+            # Delete only selected tokens that are disabled
             deleted_count = 0
             for token_id in request.token_ids:
-                await token_manager.delete_token(token_id)
-                deleted_count += 1
+                token_obj = await db.get_token(token_id)
+                if token_obj and not token_obj.is_active:
+                    await token_manager.delete_token(token_id)
+                    deleted_count += 1
         else:
             # Delete all disabled tokens (backward compatibility)
             tokens = await db.get_all_tokens()
@@ -449,7 +452,7 @@ async def batch_delete_disabled(request: BatchDisableRequest = None, token: str 
 
         return {
             "success": True,
-            "message": f"已删除 {deleted_count} 个Token",
+            "message": f"已删除 {deleted_count} 个禁用Token",
             "deleted_count": deleted_count
         }
     except Exception as e:
@@ -468,6 +471,23 @@ async def batch_disable_selected(request: BatchDisableRequest, token: str = Depe
             "success": True,
             "message": f"已禁用 {disabled_count} 个Token",
             "disabled_count": disabled_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/tokens/batch/delete-selected")
+async def batch_delete_selected(request: BatchDisableRequest, token: str = Depends(verify_admin_token)):
+    """Delete selected tokens (regardless of their status)"""
+    try:
+        deleted_count = 0
+        for token_id in request.token_ids:
+            await token_manager.delete_token(token_id)
+            deleted_count += 1
+
+        return {
+            "success": True,
+            "message": f"已删除 {deleted_count} 个Token",
+            "deleted_count": deleted_count
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -864,7 +884,8 @@ async def get_watermark_free_config(token: str = Depends(verify_admin_token)) ->
         "watermark_free_enabled": config_obj.watermark_free_enabled,
         "parse_method": config_obj.parse_method,
         "custom_parse_url": config_obj.custom_parse_url,
-        "custom_parse_token": config_obj.custom_parse_token
+        "custom_parse_token": config_obj.custom_parse_token,
+        "fallback_on_failure": config_obj.fallback_on_failure
     }
 
 @router.post("/api/watermark-free/config")
@@ -878,7 +899,8 @@ async def update_watermark_free_config(
             request.watermark_free_enabled,
             request.parse_method,
             request.custom_parse_url,
-            request.custom_parse_token
+            request.custom_parse_token,
+            request.fallback_on_failure
         )
 
         # Update in-memory config

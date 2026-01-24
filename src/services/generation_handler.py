@@ -986,11 +986,15 @@ class GenerationHandler:
                                 watermark_free_config = await self.db.get_watermark_free_config()
                                 watermark_free_enabled = watermark_free_config.watermark_free_enabled
 
+                                # Initialize variables
+                                local_url = None
+                                watermark_free_failed = False
+
                                 if watermark_free_enabled:
                                     # Watermark-free mode: post video and get watermark-free URL
-                                    debug_logger.log_info(f"Entering watermark-free mode for task {task_id}")
+                                    debug_logger.log_info(f"[Watermark-Free] Entering watermark-free mode for task {task_id}")
                                     generation_id = item.get("id")
-                                    debug_logger.log_info(f"Generation ID: {generation_id}")
+                                    debug_logger.log_info(f"[Watermark-Free] Generation ID: {generation_id}")
                                     if not generation_id:
                                         raise Exception("Generation ID not found in video draft")
 
@@ -1090,60 +1094,80 @@ class GenerationHandler:
                                                 )
 
                                     except Exception as publish_error:
-                                        # Fallback to normal mode if publish fails
+                                        # Watermark-free mode failed
+                                        watermark_free_failed = True
+                                        import traceback
+                                        error_traceback = traceback.format_exc()
                                         debug_logger.log_error(
-                                            error_message=f"Watermark-free mode failed: {str(publish_error)}",
+                                            error_message=f"[Watermark-Free] ❌ FAILED - Error: {str(publish_error)}",
                                             status_code=500,
-                                            response_text=str(publish_error)
+                                            response_text=f"{str(publish_error)}\n\nTraceback:\n{error_traceback}"
                                         )
-                                        if stream:
-                                            yield self._format_stream_chunk(
-                                                reasoning_content=f"Warning: Failed to get watermark-free version - {str(publish_error)}\nFalling back to normal video...\n"
-                                            )
-                                        # Use downloadable_url instead of url
-                                        url = item.get("downloadable_url") or item.get("url")
-                                        if not url:
-                                            raise Exception("Video URL not found")
-                                        if config.cache_enabled:
-                                            try:
-                                                cached_filename = await self.file_cache.download_and_cache(url, "video", token_id=token_id)
-                                                local_url = f"{self._get_base_url()}/tmp/{cached_filename}"
-                                            except Exception as cache_error:
-                                                local_url = url
-                                        else:
-                                            local_url = url
-                                else:
-                                    # Normal mode: use downloadable_url instead of url
-                                    url = item.get("downloadable_url") or item.get("url")
-                                    if url:
-                                        # Cache video file (if cache enabled)
-                                        if config.cache_enabled:
+
+                                        # Check if fallback is enabled
+                                        if watermark_config.fallback_on_failure:
+                                            debug_logger.log_info(f"[Watermark-Free] Fallback enabled, falling back to normal mode (original URL)")
                                             if stream:
                                                 yield self._format_stream_chunk(
-                                                    reasoning_content="**Video Generation Completed**\n\nVideo generation successful. Now caching the video file...\n"
+                                                    reasoning_content=f"⚠️ Warning: Failed to get watermark-free version - {str(publish_error)}\nFalling back to normal video...\n"
                                                 )
+                                        else:
+                                            # Fallback disabled, mark task as failed
+                                            debug_logger.log_error(
+                                                error_message=f"[Watermark-Free] Fallback disabled, marking task as failed",
+                                                status_code=500,
+                                                response_text=str(publish_error)
+                                            )
+                                            if stream:
+                                                yield self._format_stream_chunk(
+                                                    reasoning_content=f"❌ Error: Failed to get watermark-free version - {str(publish_error)}\nFallback is disabled. Task marked as failed.\n"
+                                                )
+                                            # Re-raise the exception to mark task as failed
+                                            raise
 
-                                            try:
-                                                cached_filename = await self.file_cache.download_and_cache(url, "video", token_id=token_id)
-                                                local_url = f"{self._get_base_url()}/tmp/{cached_filename}"
-                                                if stream:
+                                # If watermark-free mode is disabled or failed (with fallback enabled), use normal mode
+                                if not watermark_free_enabled or (watermark_free_failed and watermark_config.fallback_on_failure):
+                                    # Normal mode: use downloadable_url instead of url
+                                    url = item.get("downloadable_url") or item.get("url")
+                                    if not url:
+                                        raise Exception("Video URL not found in draft")
+
+                                    debug_logger.log_info(f"Using original URL from draft: {url[:100]}...")
+
+                                    if config.cache_enabled:
+                                        # Show appropriate message based on mode
+                                        if stream and not watermark_free_failed:
+                                            # Normal mode (watermark-free disabled)
+                                            yield self._format_stream_chunk(
+                                                reasoning_content="**Video Generation Completed**\n\nVideo generation successful. Now caching the video file...\n"
+                                            )
+
+                                        try:
+                                            cached_filename = await self.file_cache.download_and_cache(url, "video", token_id=token_id)
+                                            local_url = f"{self._get_base_url()}/tmp/{cached_filename}"
+                                            if stream:
+                                                if watermark_free_failed:
+                                                    yield self._format_stream_chunk(
+                                                        reasoning_content="Video file cached successfully (fallback mode). Preparing final response...\n"
+                                                    )
+                                                else:
                                                     yield self._format_stream_chunk(
                                                         reasoning_content="Video file cached successfully. Preparing final response...\n"
                                                     )
-                                            except Exception as cache_error:
-                                                # Fallback to original URL if caching fails
-                                                local_url = url
-                                                if stream:
-                                                    yield self._format_stream_chunk(
-                                                        reasoning_content=f"Warning: Failed to cache file - {str(cache_error)}\nUsing original URL instead...\n"
-                                                    )
-                                        else:
-                                            # Cache disabled: use original URL directly
+                                        except Exception as cache_error:
                                             local_url = url
                                             if stream:
                                                 yield self._format_stream_chunk(
-                                                    reasoning_content="**Video Generation Completed**\n\nCache is disabled. Using original URL directly...\n"
+                                                    reasoning_content=f"Warning: Failed to cache file - {str(cache_error)}\nUsing original URL instead...\n"
                                                 )
+                                    else:
+                                        # Cache disabled
+                                        local_url = url
+                                        if stream and not watermark_free_failed:
+                                            # Normal mode (watermark-free disabled)
+                                            yield self._format_stream_chunk(
+                                                reasoning_content="**Video Generation Completed**\n\nCache is disabled. Using original URL directly...\n"
+                                            )
 
                                 # Task completed
                                 await self.db.update_task(
