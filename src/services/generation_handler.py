@@ -813,7 +813,7 @@ class GenerationHandler:
                     # Send retry notification to user if streaming
                     if stream:
                         yield self._format_stream_chunk(
-                            reasoning_content=f"**生成失败，正在重试**\\n\\n第 {retry_count} 次重试（共 {max_retries} 次）...\\n\\n失败原因：{str(e)}\\n\\n"
+                            reasoning_content=f"**生成失败，正在重试**\n\n第 {retry_count} 次重试（共 {max_retries} 次）...\n\n失败原因：{str(e)}\n\n"
                         )
 
                     # Small delay before retry

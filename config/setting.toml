@@ -52,3 +52,10 @@ at_auto_refresh_enabled = false
 
 [call_logic]
 call_mode = "default"
+
+[timezone]
+# 时区偏移小时数，默认为东八区（中国标准时间）
+# 可选值：-12 到 +14 的整数
+# 常用时区：中国/新加坡 +8, 日本/韩国 +9, 印度 +5.5, 伦敦 0, 纽约 -5, 洛杉矶 -8
+timezone_offset = 8
+

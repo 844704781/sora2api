@@ -928,9 +928,16 @@ async def get_stats(token: str = Depends(verify_admin_token)):
 @router.get("/api/logs")
 async def get_logs(limit: int = 100, token: str = Depends(verify_admin_token)):
     """Get recent logs with token email and task progress"""
+    from src.utils.timezone import convert_utc_to_local
+
     logs = await db.get_recent_logs(limit)
     result = []
     for log in logs:
+        # Convert UTC time to local timezone
+        created_at = log.get("created_at")
+        if created_at:
+            created_at = convert_utc_to_local(created_at)
+
         log_data = {
             "id": log.get("id"),
             "token_id": log.get("token_id"),
@@ -939,7 +946,7 @@ async def get_logs(limit: int = 100, token: str = Depends(verify_admin_token)):
             "operation": log.get("operation"),
             "status_code": log.get("status_code"),
             "duration": log.get("duration"),
-            "created_at": log.get("created_at"),
+            "created_at": created_at,
             "request_body": log.get("request_body"),
             "response_body": log.get("response_body"),
             "task_id": log.get("task_id")
