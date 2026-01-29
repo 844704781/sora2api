@@ -260,7 +260,7 @@ class SoraClient:
 
     async def _get_sentinel_token_via_browser(self, proxy_url: Optional[str] = None) -> Optional[str]:
         if not PLAYWRIGHT_AVAILABLE:
-            debug_logger.log_info("[Warning] Playwright not available, cannot use browser fallback")
+            print("[Warning] Playwright not available, cannot use browser fallback")
             return None
         
         try:
@@ -280,7 +280,7 @@ class SoraClient:
 
                 if proxy_url:
                     launch_args["proxy"] = {"server": proxy_url}
-                debug_logger.log_info(f"[Browser] Launching with args: {launch_args}")
+                print(f"[Browser] Launching with args: {launch_args}")
                 browser = await p.chromium.launch(**launch_args)
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -313,7 +313,7 @@ class SoraClient:
                 #     );
                 # """)
 
-                debug_logger.log_info(f"[Browser] Navigating to sora.chatgpt.com...")
+                print(f"[Browser] Navigating to sora.chatgpt.com...")
                 await page.goto("https://sora.chatgpt.com", wait_until="domcontentloaded", timeout=90000)
 
                 # 等待 Cloudflare 验证完成
@@ -325,14 +325,14 @@ class SoraClient:
                     if cookie.get("name") == "oai-did":
                         device_id = cookie.get("value")
                         break
-                debug_logger.log_info(f"[Browser] Cookies: {cookies}")
+                print(f"[Browser] Cookies: {cookies}")
                 if not device_id:
                     device_id = str(uuid4())
-                    debug_logger.log_info(f"[Browser] No oai-did cookie, generated: {device_id}")
+                    print(f"[Browser] No oai-did cookie, generated: {device_id}")
                 else:
-                    debug_logger.log_info(f"[Browser] Got oai-did from cookie: {device_id}")
-                debug_logger.log_info(f"[Browser] Device ID: {device_id}")
-                debug_logger.log_info(f"[Browser] Waiting for SentinelSDK...")
+                    print(f"[Browser] Got oai-did from cookie: {device_id}")
+                print(f"[Browser] Device ID: {device_id}")
+                print(f"[Browser] Waiting for SentinelSDK...")
                 for _ in range(120):
                     try:
                         sdk_ready = await page.evaluate("() => typeof window.SentinelSDK !== 'undefined'")
@@ -342,15 +342,15 @@ class SoraClient:
                         pass
                     await asyncio.sleep(0.5)
                 else:
-                    debug_logger.log_info("[Browser] SentinelSDK load timeout")
+                    print("[Browser] SentinelSDK load timeout")
                     await browser.close()
                     return None
                 
-                debug_logger.log_info(f"[Browser] SentinelSDK ready, getting token...")
+                print(f"[Browser] SentinelSDK ready, getting token...")
                 
                 # 尝试获取 token，最多重试 3 次
                 for attempt in range(3):
-                    debug_logger.log_info(f"[Browser] Getting token, attempt {attempt + 1}/3...")
+                    print(f"[Browser] Getting token, attempt {attempt + 1}/3...")
                     
                     try:
                         token = await page.evaluate(
@@ -359,7 +359,7 @@ class SoraClient:
                         )
                         
                         if token:
-                            debug_logger.log_info(f"[Browser] Token obtained successfully")
+                            print(f"[Browser] Token obtained successfully")
                             await browser.close()
                             
                             if isinstance(token, str):
@@ -372,10 +372,10 @@ class SoraClient:
                             
                             return json.dumps(token_data, ensure_ascii=False, separators=(",", ":"))
                         else:
-                            debug_logger.log_info(f"[Browser] Token is empty")
+                            print(f"[Browser] Token is empty")
                             
                     except Exception as e:
-                        debug_logger.log_info(f"[Browser] Token exception: {str(e)}")
+                        print(f"[Browser] Token exception: {str(e)}")
                     
                     if attempt < 2:
                         await asyncio.sleep(2)
