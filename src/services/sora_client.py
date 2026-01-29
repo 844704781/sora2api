@@ -21,8 +21,9 @@ from ..core.logger import debug_logger
 
 try:
     from playwright.async_api import async_playwright
+    from playwright_stealth import Stealth, ALL_EVASIONS_DISABLED_KWARGS
     PLAYWRIGHT_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PLAYWRIGHT_AVAILABLE = False
 
 # PoW related constants
@@ -263,24 +264,60 @@ class SoraClient:
             return None
         
         try:
-            async with async_playwright() as p:
+            async with Stealth().use_async(async_playwright()) as p:
                 launch_args = {
-                    "headless": True,
-                    "args": ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                    "headless": False,
+                    "args": [
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",  # ✅ 加逗号
+                        "--disable-blink-features=AutomationControlled",  # ✅ 加逗号
+                        "--disable-features=IsolateOrigins,site-per-process",  # ✅ 加逗号
+                        "--disable-web-security",
+                        "--window-size=1920,1080"
+                    ]
                 }
-                
+
                 if proxy_url:
                     launch_args["proxy"] = {"server": proxy_url}
-                
+                debug_logger.log_info(f"[Browser] Launching with args: {launch_args}")
                 browser = await p.chromium.launch(**launch_args)
                 context = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    viewport={"width": 1920, "height": 1080},
+                    locale="en-US",
+                    timezone_id="America/New_York",
+                    permissions=["geolocation", "notifications"],
+                    color_scheme="light",
+                    extra_http_headers={
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+                    }
                 )
-                
+
                 page = await context.new_page()
-                
+
+                # await page.add_init_script("""
+                #     // 移除 webdriver 标识
+                #     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                #
+                #     // 模拟真实的 Chrome 属性
+                #     window.chrome = {runtime: {}};
+                #
+                #     // 覆盖 permissions
+                #     const originalQuery = window.navigator.permissions.query;
+                #     window.navigator.permissions.query = (parameters) => (
+                #         parameters.name === 'notifications' ?
+                #         Promise.resolve({state: Notification.permission}) :
+                #         originalQuery(parameters)
+                #     );
+                # """)
+
                 debug_logger.log_info(f"[Browser] Navigating to sora.chatgpt.com...")
                 await page.goto("https://sora.chatgpt.com", wait_until="domcontentloaded", timeout=90000)
+
+                # 等待 Cloudflare 验证完成
+                await page.wait_for_timeout(5000)
                 
                 cookies = await context.cookies()
                 device_id = None
@@ -288,13 +325,13 @@ class SoraClient:
                     if cookie.get("name") == "oai-did":
                         device_id = cookie.get("value")
                         break
-                
+                debug_logger.log_info(f"[Browser] Cookies: {cookies}")
                 if not device_id:
                     device_id = str(uuid4())
                     debug_logger.log_info(f"[Browser] No oai-did cookie, generated: {device_id}")
                 else:
                     debug_logger.log_info(f"[Browser] Got oai-did from cookie: {device_id}")
-                
+                debug_logger.log_info(f"[Browser] Device ID: {device_id}")
                 debug_logger.log_info(f"[Browser] Waiting for SentinelSDK...")
                 for _ in range(120):
                     try:
@@ -773,6 +810,7 @@ class SoraClient:
             size: Video size (small for standard, large for HD)
             token_id: Token ID for getting token-specific proxy (optional)
         """
+
         inpaint_items = []
         if media_id:
             inpaint_items = [{
