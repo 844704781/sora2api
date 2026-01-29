@@ -392,6 +392,95 @@ class SoraClient:
             )
             return None
 
+    async def _get_sentinel_token_via_pow_proxy(self, proxy_url: Optional[str] = None) -> Optional[str]:
+        """Get sentinel token via pow.nodai.design API
+
+        This is an alternative method to get Sentinel Token by calling
+        https://pow.nodai.design/getToken which returns the same token format
+        as the browser-based method.
+
+        Args:
+            proxy_url: Optional proxy URL to use for the request
+
+        Returns:
+            JSON string of sentinel token data, or None if failed
+        """
+        url = "https://pow.nodai.design/getToken"
+
+        headers = {
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-language": "zh-CN,zh;q=0.9",
+            "cache-control": "no-cache",
+            "pragma": "no-cache",
+            "priority": "u=0, i",
+            "sec-ch-ua": '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+        }
+
+        try:
+            async with AsyncSession() as session:
+                kwargs = {
+                    "headers": headers,
+                    "timeout": 60
+                }
+                if proxy_url:
+                    kwargs["proxy"] = proxy_url
+
+                response = await session.get(url, **kwargs)
+
+                if response.status_code != 200:
+                    debug_logger.log_error(
+                        error_message=f"PoW proxy request failed: {response.status_code}",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                        source="Server"
+                    )
+                    return None
+
+                result = response.json()
+
+                if result.get("ok") and result.get("token"):
+                    debug_logger.log_info("[PoW Proxy] Successfully obtained sentinel token")
+
+                    # Parse and ensure id field exists
+                    token = result["token"]
+                    if isinstance(token, str):
+                        token_data = json.loads(token)
+                    else:
+                        token_data = token
+
+                    if "id" not in token_data or not token_data.get("id"):
+                        device_id = str(uuid4())
+                        token_data["id"] = device_id
+                        debug_logger.log_info(f"[PoW Proxy] Added device_id: {device_id}")
+                        return json.dumps(token_data, ensure_ascii=False, separators=(",", ":"))
+
+                    return result["token"]
+                else:
+                    debug_logger.log_error(
+                        error_message=f"PoW proxy returned invalid response: {result}",
+                        status_code=0,
+                        response_text=str(result),
+                        source="Server"
+                    )
+                    return None
+
+        except Exception as e:
+            debug_logger.log_error(
+                error_message=f"PoW proxy request failed: {str(e)}",
+                status_code=0,
+                response_text=str(e),
+                source="Server"
+            )
+            return None
+
     async def _nf_create_urllib(self, token: str, payload: dict, sentinel_token: str,
                                 proxy_url: Optional[str], token_id: Optional[int] = None,
                                 user_agent: Optional[str] = None) -> Dict[str, Any]:
@@ -429,7 +518,7 @@ class SoraClient:
             if "400" in error_str or "sentinel" in error_str.lower() or "invalid" in error_str.lower():
                 debug_logger.log_info("Attempting browser fallback for sentinel token...")
                 
-                browser_token = await self._get_sentinel_token_via_browser(proxy_url)
+                browser_token = await self._get_sentinel_token_via_pow_proxy()
                 
                 if browser_token:
                     debug_logger.log_info("Got sentinel token from browser, retrying nf/create...")
@@ -836,7 +925,7 @@ class SoraClient:
         if config.pow_proxy_enabled:
             pow_proxy_url = config.pow_proxy_url or None
 
-        sentinel_token = await self._get_sentinel_token_via_browser(pow_proxy_url)
+        sentinel_token = await self._get_sentinel_token_via_pow_proxy()
 
         if not sentinel_token:
             # 如果浏览器方式失败，回退到手动 POW
